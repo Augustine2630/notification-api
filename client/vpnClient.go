@@ -84,14 +84,14 @@ func downloadClientConfig(client *resty.Client, clientID, destPath string) (stri
 	if destPath == "" {
 		cd := resp.Header().Get("Content-Disposition")
 		if fn := filenameFromContentDisposition(cd); fn != "" {
-			destPath = fn
+			destPath = "./data/" + fn
 		} else {
 			// запасной вариант
-			destPath = clientID + ".conf"
+			destPath = "./data/" + clientID + ".conf"
 		}
 	}
 
-	out, err := os.Create(destPath)
+	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", err
 	}
