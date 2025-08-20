@@ -39,7 +39,6 @@ func main() {
 	// память состояний пользователей по chatID
 	states := make(map[int64]*userState)
 
-	//countryKeyboard, profileKeyboard, keyboards["platformKeyboard"], nameKeyboard := keyboard.SetupKeyboards()
 	keyboards := keyboard.SetupKeyboards().Keyboards
 
 	// валидатор имени: 1..12 символов, [a-zA-Z0-9_-]
@@ -159,7 +158,7 @@ func main() {
 			st.AwaitName = false
 
 			msg := tgbotapi.NewMessage(chatID, "Выберите платформу:")
-			msg.ReplyMarkup = keyboards["profileKeyboard"]
+			msg.ReplyMarkup = keyboards["platformKeyboard"]
 			bot.Send(msg)
 
 		case "Удалить профиль":
