@@ -61,7 +61,7 @@ func handleName(ctx *HandlerContext, chatID int64, text string) {
 		return
 	}
 
-	path, err := ctx.Service.Create(st.Region, st.Platform, text)
+	path, qrPng, err := ctx.Service.Create(st.Region, st.Platform, text)
 	if err != nil {
 		log.Println("Create error:", err)
 		send(ctx, chatID, "Не удалось создать профиль: "+err.Error(), ctx.Keyboards["countryKeyboard"])
@@ -69,9 +69,11 @@ func handleName(ctx *HandlerContext, chatID int64, text string) {
 		return
 	}
 
-	// отправляем файл
+	if _, err := ctx.Bot.Send(tgbotapi.NewPhoto(chatID, tgbotapi.FileBytes{Name: "qr.png", Bytes: qrPng})); err != nil {
+		log.Println("Ошибка при отправке файла:", err)
+	}
 	doc := tgbotapi.NewDocument(chatID, tgbotapi.FilePath(path))
-	doc.Caption = "Ваш профиль готов ✅"
+	doc.Caption = "Ваш профиль готов ✅. Отсканируйте QR или импортируйте файл конфигурации"
 	if _, err := ctx.Bot.Send(doc); err != nil {
 		log.Println("Ошибка при отправке файла:", err)
 	}

@@ -1,15 +1,25 @@
 package client
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"github.com/go-resty/resty/v2"
+	"image"
+	"image/png"
 	"io"
+	"math"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
+	"golang.org/x/image/draw"
 )
 
 func createSession(host, password string) (*resty.Client, error) {
@@ -93,6 +103,36 @@ func downloadClientConfig(client *resty.Client, clientID, destPath string) (stri
 	return destPath, nil
 }
 
+func getQrCode(client *resty.Client, clientID string) ([]byte, error) {
+	endpoint := fmt.Sprintf("/api/wireguard/client/%s/qrcode.svg", clientID)
+
+	resp, err := client.R().Get(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("getQrCode failed: %s - %s", resp.Status(), resp.String())
+	}
+
+	return resp.Body(), nil
+}
+
+func getQrCodeString(client *resty.Client, clientID string) (string, error) {
+	endpoint := fmt.Sprintf("/api/wireguard/client/%s/qrcode.svg", clientID)
+
+	resp, err := client.R().Get(endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.IsError() {
+		return "", fmt.Errorf("getQrCode failed: %s - %s", resp.Status(), resp.String())
+	}
+
+	return resp.String(), nil
+}
+
 // получить список клиентов
 func listClients(client *resty.Client) ([]WGClient, error) {
 	var out []WGClient
@@ -156,27 +196,94 @@ func deleteClient(client *resty.Client, clientID string) error {
 	return nil
 }
 
-func DoCreateConfig(host, password, region, tgId, platform string) (string, error) {
+func DoCreateConfig(host, password, region, tgId, platform string) (string, []byte, error) {
 	cli, err := createSession(host, password)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	clientConfig := fmt.Sprintf("%s-%s%s", tgId, region, platform)
 
 	if err := createClient(cli, clientConfig); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	clientID, err := findClientIDByName(cli, clientConfig)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	path, err := downloadClientConfig(cli, clientID, "")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return path, nil
+	qrCode, err := getQrCodeString(cli, clientID)
+
+	pngQr, err := svgToPng(qrCode, 512, 512)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return path, pngQr, nil
+}
+
+var vbRe = regexp.MustCompile(`viewBox\s*=\s*"[^"]*\b0\s+0\s+(\d+)\s+(\d+)\b"`)
+
+func svgToPNGForQR(svgStr string, target int) ([]byte, error) {
+	if target <= 0 {
+		target = 512
+	}
+
+	// вытащим исходную сетку из viewBox (у вашего SVG это 89x89)
+	wUnits, hUnits := 89, 89
+	if m := vbRe.FindStringSubmatch(svgStr); len(m) == 3 {
+		if v, err := strconv.Atoi(m[1]); err == nil {
+			wUnits = v
+		}
+		if v, err := strconv.Atoi(m[2]); err == nil {
+			hUnits = v
+		}
+	}
+
+	scale := int(math.Max(1, math.Round(float64(target)/float64(wUnits))))
+	baseW := wUnits * scale
+	baseH := hUnits * scale
+
+	// рисуем в «базовый» размер (кратный сетке)
+	icon, err := oksvg.ReadIconStream(strings.NewReader(svgStr))
+	if err != nil {
+		return nil, err
+	}
+	icon.SetTarget(0, 0, float64(baseW), float64(baseH))
+
+	src := image.NewRGBA(image.Rect(0, 0, baseW, baseH))
+	scanner := rasterx.NewScannerGV(baseW, baseH, src, src.Bounds())
+	raster := rasterx.NewDasher(baseW, baseH, scanner)
+	icon.Draw(raster, 1.0)
+
+	// если нужен ровно 512 — ресайзим NearestNeighbor (сохраняет «квадраты»)
+	dst := src
+	if baseW != target || baseH != target {
+		dst = image.NewRGBA(image.Rect(0, 0, target, target))
+		draw.NearestNeighbor.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func svgToPng(svg string, width, height int) ([]byte, error) {
+	cmd := exec.Command("rsvg-convert", "-f", "png", "-w", "512", "-h", "512")
+	cmd.Stdin = bytes.NewReader([]byte(svg))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	pngBytes := out.Bytes()
+	return pngBytes, nil
 }

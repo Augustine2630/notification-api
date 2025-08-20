@@ -11,7 +11,7 @@ type ProfileService struct {
 	Password string
 }
 
-func (s *ProfileService) Create(region, platform, name string) (string, error) {
+func (s *ProfileService) Create(region, platform, name string) (string, []byte, error) {
 	var host string
 	switch region {
 	case "USA":
@@ -20,7 +20,7 @@ func (s *ProfileService) Create(region, platform, name string) (string, error) {
 		host = s.HostFIN
 	}
 	if host == "" || s.Password == "" {
-		return "", errors.New("bad config (HOST/PASSWORD missing)")
+		return "", nil, errors.New("bad config (HOST/PASSWORD missing)")
 	}
 
 	reg := map[string]string{"USA": "u", "FINLAND": "f"}[region]

@@ -9,10 +9,12 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -trimpath -o /out/app cmd/main.go
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.20 AS runtime
+
+RUN apk add --no-cache librsvg
 
 WORKDIR /app
 COPY --from=builder /out/app /app/app
 
-USER nonroot:nonroot
+USER nobody
 ENTRYPOINT ["/app/app"]
