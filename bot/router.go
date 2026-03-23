@@ -15,22 +15,12 @@ func Route(ctx *HandlerContext, upd tgbotapi.Update) {
 	if _, ok := ctx.States[chatID]; !ok {
 		ctx.States[chatID] = &UserState{Step: StepChooseRegion}
 	}
-	st := ctx.States[chatID]
-
 	switch {
-	case text == "/start" || text == "🔙 В начало":
-		handleStart(ctx, chatID)
-	case text == "USA" || text == "FINLAND":
-		handleRegion(ctx, chatID, text)
-	case text == "Создать профиль":
-		handleCreate(ctx, chatID)
-	case text == "Удалить профиль":
-		handleDelete(ctx, chatID)
-	case text == "phone" || text == "pc":
-		handlePlatform(ctx, chatID, text)
-	case st.Step == StepEnterName:
-		handleName(ctx, chatID, text)
+	case text == "/start":
+		handleXrayInstruction(ctx, chatID)
+	case text == "❓ Инструкция по xray":
+		handleXrayInstruction(ctx, chatID)
 	default:
-		handleDefault(ctx, chatID, st)
+		handleXrayInstruction(ctx, chatID)
 	}
 }

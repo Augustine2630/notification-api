@@ -6,18 +6,20 @@ import (
 )
 
 type Config struct {
-	BotToken string
-	HostUSA  string
-	HostFIN  string
-	Password string
+	BotToken   string
+	HostUSA    string
+	HostFIN    string
+	Password   string
+	MiniAppURL string
 }
 
 func Load() *Config {
 	cfg := &Config{
-		BotToken: os.Getenv("BOT_TOKEN"),
-		HostUSA:  os.Getenv("HOST_USA"),
-		HostFIN:  os.Getenv("HOST_FIN"),
-		Password: os.Getenv("PASSWORD"),
+		BotToken:   os.Getenv("BOT_TOKEN"),
+		HostUSA:    os.Getenv("HOST_USA"),
+		HostFIN:    os.Getenv("HOST_FIN"),
+		Password:   os.Getenv("PASSWORD"),
+		MiniAppURL: os.Getenv("MINI_APP_URL"),
 	}
 	if cfg.BotToken == "" {
 		log.Panic("BOT_TOKEN is empty")
