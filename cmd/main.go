@@ -54,6 +54,12 @@ func main() {
 		MiniAppURL: cfg.MiniAppURL,
 	}
 
+	// Start battery monitoring service
+	alertChatIDs := []int64{422714320, 1075418720}
+	batteryService := service.NewBatteryService(botAPI, cfg.NodeExporterHost, alertChatIDs)
+	batteryService.Start()
+	defer batteryService.Stop()
+
 	// Start HTTP server in goroutine
 	go startHTTPServer(ctx)
 
