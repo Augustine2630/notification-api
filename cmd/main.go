@@ -16,7 +16,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Set up proxy for Telegram API requests
+	//Set up proxy for Telegram API requests
 	proxyURL := &url.URL{
 		Scheme: "http",
 		User:   url.UserPassword("tg-vpn-bot", "9DBOt3nBGdI2a4cD"),
@@ -64,6 +64,7 @@ func main() {
 
 func startHTTPServer(ctx *bot.HandlerContext) {
 	http.HandleFunc("/approve", bot.HandleApprove(ctx))
+	http.HandleFunc("/api/v1/send/announce", bot.HandleAnnounce(ctx))
 	log.Println("HTTP server listening on :80")
 	if err := http.ListenAndServe(":80", nil); err != nil {
 		log.Println("HTTP server error:", err)
