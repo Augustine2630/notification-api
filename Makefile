@@ -1,6 +1,6 @@
 .PHONY: build docker release build-arm docker-arm release-arm
 
-IMAGE = images.registry.twcstorage.ru/tg/tg-vpn-bot
+IMAGE = images.registry.twcstorage.ru/util/notification-api
 
 _build:
 	GOOS=linux GOARCH=$(GOARCH) go build -o app cmd/main.go
@@ -18,4 +18,4 @@ docker-arm: build-arm
 	docker build -t $(IMAGE):latest --push .
 
 release: docker-arm
-	kubectl rollout restart deployment -n tg tg-vpn-bot
+	kubectl rollout restart deployment -n util notification-api

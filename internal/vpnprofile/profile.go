@@ -1,8 +1,9 @@
-package service
+package vpnprofile
 
 import (
 	"errors"
-	"tg-vpn-bot/client"
+
+	"notification-api/internal/tg/client"
 )
 
 type ProfileService struct {

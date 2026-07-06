@@ -5,10 +5,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"tg-vpn-bot/bot"
-	"tg-vpn-bot/config"
-	"tg-vpn-bot/service"
 	"time"
+
+	"notification-api/internal/config"
+	"notification-api/internal/notification/controller"
+	notifsender "notification-api/internal/notification/sender"
+	notifservice "notification-api/internal/notification/service"
+	"notification-api/internal/tg/bot"
+	"notification-api/internal/vpnprofile"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -23,7 +27,7 @@ func main() {
 		Host:   "139.28.97.175:3128",
 	}
 
-	client := &http.Client{
+	httpClient := &http.Client{
 		Timeout: 120 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -35,44 +39,51 @@ func main() {
 			ExpectContinueTimeout: 30 * time.Second,
 		},
 	}
-	botAPI, err := tgbotapi.NewBotAPIWithClient(cfg.BotToken, tgbotapi.APIEndpoint, client)
+	botAPI, err := tgbotapi.NewBotAPIWithClient(cfg.BotToken, tgbotapi.APIEndpoint, httpClient)
 	if err != nil {
 		log.Panic(err)
 	}
 
 	log.Printf("Authorized on account %s", botAPI.Self.UserName)
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 55
-	updates := botAPI.GetUpdatesChan(u)
+	// Notification stack: sender talks to Telegram, service composes messages,
+	// controller exposes it over HTTP. Every outbound message in the app flows
+	// through notifier.
+	sender := notifsender.NewTelegramSender(botAPI)
+	notifier := notifservice.NewNotificationService(sender)
 
 	ctx := &bot.HandlerContext{
-		Bot:        botAPI,
+		Notifier:   notifier,
 		States:     make(map[int64]*bot.UserState),
 		Keyboards:  bot.SetupKeyboards().Keyboards,
-		Service:    &service.ProfileService{HostUSA: cfg.HostUSA, HostFIN: cfg.HostFIN, Password: cfg.Password},
+		Service:    &vpnprofile.ProfileService{HostUSA: cfg.HostUSA, HostFIN: cfg.HostFIN, Password: cfg.Password},
 		MiniAppURL: cfg.MiniAppURL,
 	}
 
 	// Start battery monitoring service
 	alertChatIDs := []int64{422714320, 1075418720}
-	batteryService := service.NewBatteryService(botAPI, cfg.NodeExporterHost, alertChatIDs)
+	batteryService := vpnprofile.NewBatteryService(notifier, cfg.NodeExporterHost, alertChatIDs)
 	batteryService.Start()
 	defer batteryService.Stop()
 
 	// Start HTTP server in goroutine
-	go startHTTPServer(ctx)
+	go startHTTPServer(notifier)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 55
+	updates := botAPI.GetUpdatesChan(u)
 
 	for update := range updates {
 		bot.Route(ctx, update)
 	}
 }
 
-func startHTTPServer(ctx *bot.HandlerContext) {
-	http.HandleFunc("/approve", bot.HandleApprove(ctx))
-	http.HandleFunc("/api/v1/send/announce", bot.HandleAnnounce(ctx))
+func startHTTPServer(notifier *notifservice.NotificationService) {
+	mux := http.NewServeMux()
+	controller.NewController(notifier).RegisterRoutes(mux)
+
 	log.Println("HTTP server listening on :80")
-	if err := http.ListenAndServe(":80", nil); err != nil {
+	if err := http.ListenAndServe(":80", mux); err != nil {
 		log.Println("HTTP server error:", err)
 	}
 }

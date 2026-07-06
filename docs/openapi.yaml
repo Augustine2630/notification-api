@@ -1,0 +1,219 @@
+openapi: "3.0.3"
+
+info:
+  title: Notification API
+  version: "1.0.0"
+  description: >
+    HTTP surface of the notification module. Every outbound Telegram message the
+    service produces (approvals, bulk announcements) is triggered through these
+    endpoints; message composition and delivery are handled internally by the
+    notification service.
+
+paths:
+
+  # ─────────────────────────────────────────────
+  #  NOTIFICATIONS
+  # ─────────────────────────────────────────────
+  /api/v1/notifications/approve:
+    get:
+      tags:
+        - notifications
+      operationId: sendApproveNotification
+      summary: Send an approval/rejection notification to a user
+      description: >
+        Sends a "access approved" or "access rejected" message to the given
+        Telegram user. Also accepts POST for compatibility with callers that
+        prefer not to send a body-less GET.
+      parameters:
+        - $ref: "#/components/parameters/TelegramIdQuery"
+        - $ref: "#/components/parameters/ApprovedQuery"
+      responses:
+        "200":
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      tags:
+        - notifications
+      operationId: sendApproveNotificationPost
+      summary: Send an approval/rejection notification to a user (POST form)
+      description: Identical behavior to the GET variant; parameters are still read from the query string.
+      parameters:
+        - $ref: "#/components/parameters/TelegramIdQuery"
+        - $ref: "#/components/parameters/ApprovedQuery"
+      responses:
+        "200":
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/notifications/announce:
+    post:
+      tags:
+        - notifications
+      operationId: sendAnnounceNotification
+      summary: Broadcast a message to a list of Telegram users
+      description: >
+        Sends the same text (optionally with an image) to every user ID in the
+        request. Delivery is best-effort per recipient — a failure for one user
+        does not stop the rest from being sent; failures are reported in the response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnounceRequest"
+      responses:
+        "200":
+          description: Fan-out completed (individual recipients may still have failed — see response body)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnounceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+# ─────────────────────────────────────────────
+#  COMPONENTS
+# ─────────────────────────────────────────────
+
+components:
+
+  parameters:
+    TelegramIdQuery:
+      name: telegramId
+      in: query
+      required: true
+      description: Telegram user ID to notify
+      schema:
+        type: integer
+        format: int64
+      example: 123456789
+
+    ApprovedQuery:
+      name: approved
+      in: query
+      required: false
+      description: >
+        Whether the request was approved. Defaults to true if omitted;
+        "false" or "0" are treated as rejection, any other value as approval.
+      schema:
+        type: string
+        default: "true"
+        example: "true"
+
+  schemas:
+
+    ApproveResponse:
+      type: object
+      required: [ status, message, approved ]
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          description: The rendered message text that was sent to the user
+          example: "✅ Доступ к xray подтвержден"
+        approved:
+          type: boolean
+
+    AnnounceRequest:
+      type: object
+      required: [ text, user_ids ]
+      properties:
+        text:
+          type: string
+          description: Message text (used as photo caption if image_link is set). Supports Telegram HTML formatting.
+        image_link:
+          type: string
+          description: Optional public URL of an image to attach to the message
+        user_ids:
+          type: array
+          description: Telegram user IDs to send the message to
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+
+    AnnounceResponse:
+      type: object
+      required: [ status, message, sent, failed ]
+      properties:
+        status:
+          type: string
+          example: completed
+        message:
+          type: string
+          example: "Sent to 8 users, 2 failed"
+        sent:
+          type: integer
+          description: Number of recipients the message was delivered to
+        failed:
+          type: integer
+          description: Number of recipients delivery failed for
+        failed_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        errors:
+          type: array
+          items:
+            type: string
+
+    ErrorResponse:
+      type: object
+      required: [ error ]
+      properties:
+        error:
+          type: string
+          description: Error description
+
+  # ── Common responses ──────────────────────────
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "telegramId is required"
+
+    MethodNotAllowed:
+      description: HTTP method not supported for this route
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "Method not allowed"
+
+    InternalServerError:
+      description: Unexpected server error (e.g. Telegram API delivery failure)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "Failed to send message"

@@ -1,4 +1,4 @@
-package service
+package vpnprofile
 
 import (
 	"fmt"
@@ -9,11 +9,13 @@ import (
 	"strconv"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"notification-api/internal/notification/service"
 )
 
+// BatteryService polls node_exporter for battery capacity and delegates the
+// actual alert delivery to the notification service once the threshold is crossed.
 type BatteryService struct {
-	BotAPI           *tgbotapi.BotAPI
+	Notifier         *service.NotificationService
 	NodeExporterHost string
 	AlertChatIDs     []int64
 	CheckInterval    time.Duration
@@ -23,9 +25,9 @@ type BatteryService struct {
 }
 
 // NewBatteryService creates a new battery monitoring service
-func NewBatteryService(botAPI *tgbotapi.BotAPI, nodeExporterHost string, alertChatIDs []int64) *BatteryService {
+func NewBatteryService(notifier *service.NotificationService, nodeExporterHost string, alertChatIDs []int64) *BatteryService {
 	return &BatteryService{
-		BotAPI:           botAPI,
+		Notifier:         notifier,
 		NodeExporterHost: nodeExporterHost,
 		AlertChatIDs:     alertChatIDs,
 		CheckInterval:    120 * time.Second,
@@ -67,19 +69,14 @@ func (bs *BatteryService) getBatteryCapacity() (int, error) {
 	return capacity, nil
 }
 
-// sendBatteryAlert sends alert message to configured chat IDs
+// sendBatteryAlert delegates alert delivery to the notification service.
 func (bs *BatteryService) sendBatteryAlert(capacity int) {
-	message := fmt.Sprintf("⚠️ <b>Низкий заряд батареи</b>\n\nТекущий заряд: <b>%d%%</b>\n\nПожалуйста, подключите зарядное устройство!", capacity)
-
-	for _, chatID := range bs.AlertChatIDs {
-		msg := tgbotapi.NewMessage(chatID, message)
-		msg.ParseMode = "HTML"
-
-		if _, err := bs.BotAPI.Send(msg); err != nil {
-			log.Printf("Failed to send battery alert to chat %d: %v", chatID, err)
-		} else {
-			log.Printf("Battery alert sent to chat %d (capacity: %d%%)", chatID, capacity)
-		}
+	errs := bs.Notifier.SendBatteryAlert(bs.AlertChatIDs, capacity)
+	for _, err := range errs {
+		log.Printf("Failed to send battery alert: %v", err)
+	}
+	if len(errs) < len(bs.AlertChatIDs) {
+		log.Printf("Battery alert sent (capacity: %d%%)", capacity)
 	}
 }
 
