@@ -1,0 +1,219 @@
+package client
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"net/http/cookiejar"
+	"net/url"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
+
+	"github.com/go-resty/resty/v2"
+)
+
+func createSession(host, password string) (*resty.Client, error) {
+	jar, _ := cookiejar.New(nil)
+	client := resty.New().
+		SetBaseURL(host).
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Accept", "application/json").
+		SetCookieJar(jar)
+
+	resp, err := client.R().
+		SetBody(map[string]string{"password": password}).
+		Post("/api/session")
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, fmt.Errorf("login failed: %s - %s", resp.Status(), resp.String())
+	}
+	return client, nil
+}
+
+type WGClient struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// добавь нужные поля, если понадобятся
+}
+
+func filenameFromContentDisposition(cd string) string {
+	// пробуем filename*, потом filename
+	// RFC 5987: filename*=UTF-8''<urlencoded>
+	reStar := regexp.MustCompile(`(?i)filename\*\s*=\s*UTF-8''([^;]+)`)
+	if m := reStar.FindStringSubmatch(cd); len(m) == 2 {
+		if dec, err := url.QueryUnescape(m[1]); err == nil && dec != "" {
+			return dec
+		}
+	}
+	re := regexp.MustCompile(`(?i)filename\s*=\s*"?([^";]+)"?`)
+	if m := re.FindStringSubmatch(cd); len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
+func downloadClientConfig(client *resty.Client, clientID, destPath string) (string, error) {
+	endpoint := fmt.Sprintf("/api/wireguard/client/%s/configuration", url.PathEscape(clientID))
+
+	resp, err := client.R().
+		SetDoNotParseResponse(true). // получим io.ReadCloser
+		Get(endpoint)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.RawBody().Close() }()
+
+	if resp.IsError() {
+		body, _ := io.ReadAll(resp.RawBody())
+		return "", fmt.Errorf("download failed: %s - %s", resp.Status(), strings.TrimSpace(string(body)))
+	}
+
+	// определяем имя файла
+	if destPath == "" {
+		cd := resp.Header().Get("Content-Disposition")
+		if fn := filenameFromContentDisposition(cd); fn != "" {
+			destPath = "./data/" + fn
+		} else {
+			// запасной вариант
+			destPath = "./data/" + clientID + ".conf"
+		}
+	}
+
+	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, resp.RawBody()); err != nil {
+		return "", err
+	}
+	return destPath, nil
+}
+
+func getQrCodeString(client *resty.Client, clientID string) (string, error) {
+	endpoint := fmt.Sprintf("/api/wireguard/client/%s/qrcode.svg", clientID)
+
+	resp, err := client.R().Get(endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.IsError() {
+		return "", fmt.Errorf("getQrCode failed: %s - %s", resp.Status(), resp.String())
+	}
+
+	return resp.String(), nil
+}
+
+// получить список клиентов
+func listClients(client *resty.Client) ([]WGClient, error) {
+	var out []WGClient
+	resp, err := client.R().
+		SetResult(&out).
+		Get("/api/wireguard/client")
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, fmt.Errorf("list clients failed: %s - %s", resp.Status(), resp.String())
+	}
+	return out, nil
+}
+
+// найти clientId по имени (точное совпадение)
+func findClientIDByName(client *resty.Client, name string) (string, error) {
+	cls, err := listClients(client)
+	if err != nil {
+		return "", err
+	}
+	for _, c := range cls {
+		if c.Name == name {
+			return c.ID, nil
+		}
+	}
+	return "", errors.New("client not found by name")
+}
+
+func createClient(client *resty.Client, name string) error {
+	body := map[string]string{"name": name}
+
+	resp, err := client.R().
+		SetBody(body).
+		Post("/api/wireguard/client")
+
+	if err != nil {
+		return err
+	}
+	if resp.IsError() {
+		return fmt.Errorf("create client failed: %s - %s", resp.Status(), resp.String())
+	}
+
+	fmt.Println("Client created OK:", resp.String())
+	return nil
+}
+
+func deleteClient(client *resty.Client, clientID string) error {
+	endpoint := fmt.Sprintf("/api/wireguard/client/%s", clientID)
+
+	resp, err := client.R().
+		Delete(endpoint)
+	if err != nil {
+		return err
+	}
+
+	if resp.IsError() {
+		return fmt.Errorf("delete client failed: %s - %s", resp.Status(), resp.String())
+	}
+
+	return nil
+}
+
+func DoCreateConfig(host, password, region, tgId, platform string) (string, []byte, error) {
+	cli, err := createSession(host, password)
+	if err != nil {
+		return "", nil, err
+	}
+
+	clientConfig := fmt.Sprintf("%s-%s%s", tgId, region, platform)
+
+	if err := createClient(cli, clientConfig); err != nil {
+		return "", nil, err
+	}
+
+	clientID, err := findClientIDByName(cli, clientConfig)
+	if err != nil {
+		return "", nil, err
+	}
+
+	path, err := downloadClientConfig(cli, clientID, "")
+	if err != nil {
+		return "", nil, err
+	}
+
+	qrCode, err := getQrCodeString(cli, clientID)
+
+	pngQr, err := svgToPng(qrCode)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return path, pngQr, nil
+}
+
+func svgToPng(svg string) ([]byte, error) {
+	cmd := exec.Command("rsvg-convert", "-f", "png", "-w", "512", "-h", "512")
+	cmd.Stdin = bytes.NewReader([]byte(svg))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	pngBytes := out.Bytes()
+	return pngBytes, nil
+}

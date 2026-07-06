@@ -1,0 +1,6 @@
+app
+.idea/
+.vexp/
+vexp.toml
+docker-compose.yaml
+.claude/settings.local.json

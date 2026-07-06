@@ -1,0 +1,89 @@
+package main
+
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/url"
+	"time"
+
+	"notification-api/internal/config"
+	"notification-api/internal/notification/controller"
+	notifsender "notification-api/internal/notification/sender"
+	notifservice "notification-api/internal/notification/service"
+	"notification-api/internal/tg/bot"
+	"notification-api/internal/vpnprofile"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+func main() {
+	cfg := config.Load()
+
+	//Set up proxy for Telegram API requests
+	proxyURL := &url.URL{
+		Scheme: "http",
+		User:   url.UserPassword("tg-vpn-bot", "9DBOt3nBGdI2a4cD"),
+		Host:   "139.28.97.175:3128",
+	}
+
+	httpClient := &http.Client{
+		Timeout: 120 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ExpectContinueTimeout: 30 * time.Second,
+		},
+	}
+	botAPI, err := tgbotapi.NewBotAPIWithClient(cfg.BotToken, tgbotapi.APIEndpoint, httpClient)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	log.Printf("Authorized on account %s", botAPI.Self.UserName)
+
+	// Notification stack: sender talks to Telegram, service composes messages,
+	// controller exposes it over HTTP. Every outbound message in the app flows
+	// through notifier.
+	sender := notifsender.NewTelegramSender(botAPI)
+	notifier := notifservice.NewNotificationService(sender)
+
+	ctx := &bot.HandlerContext{
+		Notifier:   notifier,
+		States:     make(map[int64]*bot.UserState),
+		Keyboards:  bot.SetupKeyboards().Keyboards,
+		Service:    &vpnprofile.ProfileService{HostUSA: cfg.HostUSA, HostFIN: cfg.HostFIN, Password: cfg.Password},
+		MiniAppURL: cfg.MiniAppURL,
+	}
+
+	// Start battery monitoring service
+	alertChatIDs := []int64{422714320, 1075418720}
+	batteryService := vpnprofile.NewBatteryService(notifier, cfg.NodeExporterHost, alertChatIDs)
+	batteryService.Start()
+	defer batteryService.Stop()
+
+	// Start HTTP server in goroutine
+	go startHTTPServer(notifier)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 55
+	updates := botAPI.GetUpdatesChan(u)
+
+	for update := range updates {
+		bot.Route(ctx, update)
+	}
+}
+
+func startHTTPServer(notifier *notifservice.NotificationService) {
+	mux := http.NewServeMux()
+	controller.NewController(notifier).RegisterRoutes(mux)
+
+	log.Println("HTTP server listening on :80")
+	if err := http.ListenAndServe(":80", mux); err != nil {
+		log.Println("HTTP server error:", err)
+	}
+}
