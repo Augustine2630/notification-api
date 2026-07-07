@@ -1,0 +1,63 @@
+stages:
+  - build
+  - test
+  - docker
+
+variables:
+  GOPATH: /cache/go
+  GOPROXY: http://goproxy:5757,direct
+  DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
+  REGISTRY: images.registry.twcstorage.ru
+
+cache:
+  paths:
+    - /cache/go/pkg/mod/
+
+before_script:
+  - mkdir -p /cache/go/pkg/mod
+
+build:
+  stage: build
+  image: golang:1.25.11
+  script:
+    - go build -o app cmd/main.go
+  artifacts:
+    paths:
+      - app
+    expire_in: 1 day
+  cache:
+    paths:
+      - /cache/go/pkg/mod/
+  tags:
+    - docker
+
+test:
+  stage: test
+  image: golang:1.24
+  script:
+    - go test -v ./...
+  allow_failure: true
+  cache:
+    paths:
+      - /cache/go/pkg/mod/
+  tags:
+    - docker
+
+docker:
+  stage: docker
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHA-arm64 -t $DOCKER_IMAGE:arm64 -t $DOCKER_IMAGE:latest .
+    - docker push $DOCKER_IMAGE:$CI_COMMIT_SHA-arm64
+    - docker push $DOCKER_IMAGE:arm64
+    - docker push $DOCKER_IMAGE:latest
+  dependencies:
+    - build
+  only:
+    - main
+    - tags
+  tags:
+    - docker
