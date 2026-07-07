@@ -4,30 +4,39 @@ stages:
   - docker
 
 variables:
-  GOPATH: /cache/go
+  GOPATH: /go
   GOPROXY: http://goproxy:5757,direct
   DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
-  REGISTRY: images.registry.twcstorage.ru
 
-cache:
-  paths:
-    - /cache/go/pkg/mod/
-
-before_script:
-  - mkdir -p /cache/go/pkg/mod
-
-build:
+build:amd64:
   stage: build
-  image: golang:1.25.11
+  image: golang:1.24
   script:
-    - go build -o app cmd/main.go
+    - GOOS=linux GOARCH=amd64 go build -o app cmd/main.go
   artifacts:
     paths:
       - app
     expire_in: 1 day
   cache:
+    key: go-modules
     paths:
-      - /cache/go/pkg/mod/
+      - go/pkg/mod/
+  tags:
+    - docker
+
+build:arm64:
+  stage: build
+  image: golang:1.24
+  script:
+    - GOOS=linux GOARCH=arm64 go build -o app cmd/main.go
+  artifacts:
+    paths:
+      - app
+    expire_in: 1 day
+  cache:
+    key: go-modules
+    paths:
+      - go/pkg/mod/
   tags:
     - docker
 
@@ -38,24 +47,24 @@ test:
     - go test -v ./...
   allow_failure: true
   cache:
+    key: go-modules
     paths:
-      - /cache/go/pkg/mod/
+      - go/pkg/mod/
   tags:
     - docker
 
-docker:
+docker:amd64:
   stage: docker
   image: docker:latest
   services:
     - docker:dind
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHA-arm64 -t $DOCKER_IMAGE:arm64 -t $DOCKER_IMAGE:latest .
-    - docker push $DOCKER_IMAGE:$CI_COMMIT_SHA-arm64
-    - docker push $DOCKER_IMAGE:arm64
+    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHA -t $DOCKER_IMAGE:latest .
+    - docker push $DOCKER_IMAGE:$CI_COMMIT_SHA
     - docker push $DOCKER_IMAGE:latest
   dependencies:
-    - build
+    - build:amd64
   only:
     - main
     - tags
