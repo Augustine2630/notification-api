@@ -20,6 +20,7 @@ variables:
 
 docker:
   extends: .docker_kaniko
+  needs: [ ]
   only:
     - main
     - tags
