@@ -1,16 +1,12 @@
+.ci_templates_repo: &ci_templates
+  project: &ci_templates_project 'util8860911/ci/templates'
+  ref: &ci_templates_version 'v1.0.7'
+
 include:
-  - project: 'util8860911/ci/templates'
-    ref: v1.0.5
-    file: /stages.yml
-  - project: 'util8860911/ci/templates'
-    ref: v1.0.5
-    file: /go.yml
-  - project: 'util8860911/ci/templates'
-    ref: v1.0.5
-    file: /docker.yml
-  - project: 'util8860911/ci/templates'
-    ref: v1.0.5
-    file: /deploy.yml
+  - { <<: *ci_templates, file: /stages.yml }
+  - { <<: *ci_templates, file: /go.yml }
+  - { <<: *ci_templates, file: /docker.yml }
+  - { <<: *ci_templates, file: /deploy.yml }
 
 variables:
   DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
@@ -20,14 +16,6 @@ variables:
 
 docker:
   extends: .docker_kaniko
-  needs: [ ]
-  only:
-    - main
-    - tags
-    - /^release\/.*$/
 
 deploy:
   extends: .deploy_agent
-  needs: [ "docker", "test" ]
-  only:
-    - /^release\/.*$/
