@@ -5,7 +5,7 @@ stages:
 
 variables:
   GOPATH: /go
-  GOPROXY: http://goproxy:5757,direct
+  GOPROXY: direct
   DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
 
 build:
