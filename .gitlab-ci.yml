@@ -28,6 +28,6 @@ docker:
 
 deploy:
   extends: .deploy_agent
-  needs: [ "docker" ]
+  needs: [ "docker", "test" ]
   only:
     - /^release\/.*$/
