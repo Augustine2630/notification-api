@@ -8,25 +8,9 @@ variables:
   GOPROXY: http://goproxy:5757,direct
   DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
 
-build:amd64:
+build:
   stage: build
-  image: golang:1.24
-  script:
-    - GOOS=linux GOARCH=amd64 go build -o app cmd/main.go
-  artifacts:
-    paths:
-      - app
-    expire_in: 1 day
-  cache:
-    key: go-modules
-    paths:
-      - go/pkg/mod/
-  tags:
-    - docker
-
-build:arm64:
-  stage: build
-  image: golang:1.24
+  image: golang:1.25.11
   script:
     - GOOS=linux GOARCH=arm64 go build -o app cmd/main.go
   artifacts:
@@ -53,7 +37,7 @@ test:
   tags:
     - docker
 
-docker:amd64:
+docker:
   stage: docker
   image: docker:latest
   services:
@@ -64,7 +48,7 @@ docker:amd64:
     - docker push $DOCKER_IMAGE:$CI_COMMIT_SHA
     - docker push $DOCKER_IMAGE:latest
   dependencies:
-    - build:amd64
+    - build
   only:
     - main
     - tags
