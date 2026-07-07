@@ -1,66 +1,33 @@
-stages:
-  - build
-  - docker
-  - deploy
+include:
+  - project: 'util8860911/ci-templates'
+    ref: v1
+    file: /stages.yml
+  - project: 'util8860911/ci-templates'
+    ref: v1
+    file: /go.yml
+  - project: 'util8860911/ci-templates'
+    ref: v1
+    file: /docker.yml
+  - project: 'util8860911/ci-templates'
+    ref: v1
+    file: /deploy.yml
 
 variables:
-  GOPATH: $CI_PROJECT_DIR/.cache/go
-  GOPROXY: direct
   DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
-  DEPLOY_AGENT_URL: http://192.168.1.122:8099
   DEPLOY_SERVICE_NAME: notification-api
-
-test:
-  stage: build
-  image: golang:1.25.11
-  script:
-    - go test -v ./...
-  allow_failure: true
-  cache:
-    key: go-modules
-    paths:
-      - .cache/go/pkg/mod/
-  tags:
-    - docker
+  GO_MAIN_PATH: cmd/main.go
+  GO_BUILD_ARCH: arm64
 
 docker:
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:v1.23.2-debug
-    entrypoint: [""]
-  script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf "%s:%s" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor
-      --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "${DOCKER_IMAGE}:${CI_COMMIT_SHA}"
-      --destination "${DOCKER_IMAGE}:latest"
+  extends: .docker_kaniko
+  needs: [ "build" ]
   only:
     - main
-    - /^release\/.*$/
     - tags
-  tags:
-    - docker
+    - /^release\/.*$/
 
 deploy:
-  stage: deploy
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache curl
-  script:
-    - |
-      code=$(curl -s -o /tmp/deploy-response.json -w "%{http_code}" -X POST \
-        -H "Authorization: Bearer $DEPLOY_TOKEN" \
-        "$DEPLOY_AGENT_URL/deploy?service=$DEPLOY_SERVICE_NAME")
-      cat /tmp/deploy-response.json
-      echo
-      if [ "$code" != "200" ]; then
-        echo "deploy failed with HTTP $code"
-        exit 1
-      fi
-  dependencies: [ ]
+  extends: .deploy_agent
+  needs: [ "docker" ]
   only:
     - /^release\/.*$/
-  tags:
-    - docker
