@@ -22,6 +22,17 @@ func NewController(notifier *service.NotificationService) *Controller {
 func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/notifications/approve", c.HandleApprove)
 	mux.HandleFunc("/api/v1/notifications/announce", c.HandleAnnounce)
+	mux.HandleFunc("/health", c.HandleHealth)
+}
+
+// HandleHealth reports basic liveness: the process is up and serving HTTP.
+// GET /health
+func (c *Controller) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // AnnounceRequest is the request body for POST /api/v1/notifications/announce.
