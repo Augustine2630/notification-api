@@ -1,12 +1,14 @@
 stages:
   - build
-  - test
   - docker
+  - deploy
 
 variables:
-  GOPATH: /go
+  GOPATH: $CI_PROJECT_DIR/.cache/go
   GOPROXY: direct
   DOCKER_IMAGE: images.registry.twcstorage.ru/util/notification-api
+  DEPLOY_AGENT_URL: http://192.168.1.122:8099
+  DEPLOY_SERVICE_NAME: notification-api
 
 build:
   stage: build
@@ -20,12 +22,12 @@ build:
   cache:
     key: go-modules
     paths:
-      - go/pkg/mod/
+      - .cache/go/pkg/mod/
   tags:
     - docker
 
 test:
-  stage: test
+  stage: build
   image: golang:1.24
   script:
     - go test -v ./...
@@ -33,7 +35,7 @@ test:
   cache:
     key: go-modules
     paths:
-      - go/pkg/mod/
+      - .cache/go/pkg/mod/
   tags:
     - docker
 
@@ -52,5 +54,27 @@ docker:
   only:
     - main
     - tags
+  tags:
+    - docker
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      code=$(curl -s -o /tmp/deploy-response.json -w "%{http_code}" -X POST \
+        -H "Authorization: Bearer $DEPLOY_TOKEN" \
+        "$DEPLOY_AGENT_URL/deploy?service=$DEPLOY_SERVICE_NAME")
+      cat /tmp/deploy-response.json
+      echo
+      if [ "$code" != "200" ]; then
+        echo "deploy failed with HTTP $code"
+        exit 1
+      fi
+  dependencies: [ ]
+  only:
+    - /^release\/.*$/
   tags:
     - docker
