@@ -10,22 +10,6 @@ variables:
   DEPLOY_AGENT_URL: http://192.168.1.122:8099
   DEPLOY_SERVICE_NAME: notification-api
 
-build:
-  stage: build
-  image: golang:1.25.11
-  script:
-    - GOOS=linux GOARCH=arm64 go build -o app cmd/main.go
-  artifacts:
-    paths:
-      - app
-    expire_in: 1 day
-  cache:
-    key: go-modules
-    paths:
-      - .cache/go/pkg/mod/
-  tags:
-    - docker
-
 test:
   stage: build
   image: golang:1.25.11
@@ -40,7 +24,7 @@ test:
     - docker
 
 docker:
-  stage: docker
+  stage: build
   image:
     name: gcr.io/kaniko-project/executor:v1.23.2-debug
     entrypoint: [""]
@@ -52,8 +36,6 @@ docker:
       --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
       --destination "${DOCKER_IMAGE}:${CI_COMMIT_SHA}"
       --destination "${DOCKER_IMAGE}:latest"
-  dependencies:
-    - build
   only:
     - main
     - /^release\/.*$/
