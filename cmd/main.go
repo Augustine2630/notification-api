@@ -5,10 +5,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"notification-api/internal/config"
 	"notification-api/internal/notification/controller"
+	"notification-api/internal/notification/job"
 	notifsender "notification-api/internal/notification/sender"
 	notifservice "notification-api/internal/notification/service"
 	"notification-api/internal/tg/bot"
@@ -65,6 +67,19 @@ func main() {
 	batteryService := vpnprofile.NewBatteryService(notifier, cfg.NodeExporterHost, alertChatIDs)
 	batteryService.Start()
 	defer batteryService.Stop()
+
+	// Start scheduled announcement jobs, if a jobs file is present
+	if _, statErr := os.Stat(cfg.JobsFilePath); statErr == nil {
+		scheduler, schedErr := job.NewScheduler(notifier, cfg.JobsFilePath)
+		if schedErr != nil {
+			log.Printf("Scheduler: failed to load jobs from %s: %v", cfg.JobsFilePath, schedErr)
+		} else {
+			scheduler.Start()
+			defer scheduler.Stop()
+		}
+	} else {
+		log.Printf("Scheduler: no jobs file at %s, skipping", cfg.JobsFilePath)
+	}
 
 	// Start HTTP server in goroutine
 	go startHTTPServer(notifier)

@@ -37,6 +37,7 @@ Loaded via `internal/config.Load()` from environment variables:
 | `PASSWORD` | Backend auth password |
 | `MINI_APP_URL` | URL of the `vpn-front` Telegram mini-app |
 | `NODE_EXPORTER_HOST` | Prometheus node_exporter host for battery monitoring |
+| `JOBS_FILE_PATH` | Path to the scheduled-announcement jobs JSON file (default `./jobs.json`); skipped entirely if the file doesn't exist |
 
 Note: `cmd/main.go` also configures a hardcoded outbound proxy for Telegram API
 traffic — check there if bot connectivity behaves unexpectedly in a new
@@ -64,6 +65,13 @@ HTTP entry point into the notification stack:
   └─> internal/notification/controller — REST handlers, registered on the same mux as everything else
         ├─> POST/GET /api/v1/notifications/approve   — approve/reject webhook (moved from /approve)
         └─> POST     /api/v1/notifications/announce  — bulk announcement endpoint (moved from /api/v1/send/announce)
+
+Scheduled announcements (no HTTP call needed):
+  └─> internal/notification/job — Scheduler: reads JOBS_FILE_PATH once at startup,
+        registers each task's cron expression via robfig/cron, and calls
+        NotificationService.SendAnnounce when it fires. See jobs.example.json
+        for the file format: [{ "text", "user_ids": [...], "image_link"?, "cron" }].
+        Adding/editing a job requires a service restart — the file is not re-read.
 ```
 
 - **`internal/vpnprofile`** holds `ProfileService` (VPN profile creation) and
@@ -88,3 +96,4 @@ HTTP entry point into the notification stack:
 | `internal/notification/service/` | `NotificationService` — orchestrates template + sender per notification type |
 | `internal/notification/template/` | Go-template message bodies (instruction, approve/reject, battery alert, profile-ready caption) |
 | `internal/notification/sender/` | `TelegramSender` — the only place that calls the Telegram Bot API |
+| `internal/notification/job/` | `Scheduler` + `LoadTasks` — cron-driven announcements read from a JSON file at startup |
