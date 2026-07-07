@@ -1,14 +1,14 @@
 include:
-  - project: 'util8860911/ci-templates'
+  - project: 'util8860911/ci/templates'
     ref: v1
     file: /stages.yml
-  - project: 'util8860911/ci-templates'
+  - project: 'util8860911/ci/templates'
     ref: v1
     file: /go.yml
-  - project: 'util8860911/ci-templates'
+  - project: 'util8860911/ci/templates'
     ref: v1
     file: /docker.yml
-  - project: 'util8860911/ci-templates'
+  - project: 'util8860911/ci/templates'
     ref: v1
     file: /deploy.yml
 
