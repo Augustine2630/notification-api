@@ -22,17 +22,10 @@ import (
 func main() {
 	cfg := config.Load()
 
-	//Set up proxy for Telegram API requests
-	proxyURL := &url.URL{
-		Scheme: "http",
-		User:   url.UserPassword("tg-vpn-bot", "9DBOt3nBGdI2a4cD"),
-		Host:   "139.28.97.175:3128",
-	}
-
 	httpClient := &http.Client{
 		Timeout: 120 * time.Second,
 		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(buildProxyURL(cfg)),
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
@@ -101,4 +94,21 @@ func startHTTPServer(notifier *notifservice.NotificationService) {
 	if err := http.ListenAndServe(":80", mux); err != nil {
 		log.Println("HTTP server error:", err)
 	}
+}
+
+// buildProxyURL builds the outbound proxy for Telegram API requests from config.
+// Returns nil (no proxy) if PROXY_HOST isn't set.
+func buildProxyURL(cfg *config.Config) *url.URL {
+	if cfg.ProxyHost == "" {
+		return nil
+	}
+
+	proxyURL := &url.URL{
+		Scheme: cfg.ProxyScheme,
+		Host:   cfg.ProxyHost,
+	}
+	if cfg.ProxyUser != "" {
+		proxyURL.User = url.UserPassword(cfg.ProxyUser, cfg.ProxyPassword)
+	}
+	return proxyURL
 }
