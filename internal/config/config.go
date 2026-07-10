@@ -13,6 +13,10 @@ type Config struct {
 	MiniAppURL       string
 	NodeExporterHost string
 	JobsFilePath     string
+	ProxyScheme      string
+	ProxyHost        string
+	ProxyUser        string
+	ProxyPassword    string
 }
 
 func Load() *Config {
@@ -24,12 +28,19 @@ func Load() *Config {
 		MiniAppURL:       os.Getenv("MINI_APP_URL"),
 		NodeExporterHost: os.Getenv("NODE_EXPORTER_HOST"),
 		JobsFilePath:     os.Getenv("JOBS_FILE_PATH"),
+		ProxyScheme:      os.Getenv("PROXY_SCHEME"),
+		ProxyHost:        os.Getenv("PROXY_HOST"),
+		ProxyUser:        os.Getenv("PROXY_USER"),
+		ProxyPassword:    os.Getenv("PROXY_PASSWORD"),
 	}
 	if cfg.BotToken == "" {
 		log.Panic("BOT_TOKEN is empty")
 	}
 	if cfg.JobsFilePath == "" {
 		cfg.JobsFilePath = "./jobs.json"
+	}
+	if cfg.ProxyScheme == "" {
+		cfg.ProxyScheme = "http"
 	}
 	return cfg
 }

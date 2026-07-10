@@ -4,3 +4,6 @@ app
 vexp.toml
 docker-compose.yaml
 .claude/settings.local.json
+
+### Secrets ###
+.env
