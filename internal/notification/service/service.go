@@ -81,10 +81,21 @@ func (s *NotificationService) SendApprove(telegramID int64, approved bool) (stri
 
 // SendAnnounce fans a text (optionally with an image) out to a list of recipients,
 // tracking per-recipient failures instead of aborting on the first error.
+// Duplicate recipient IDs are sent to only once.
 func (s *NotificationService) SendAnnounce(recipients []int64, text, imageLink string) AnnounceResult {
 	result := AnnounceResult{}
 
+	seen := make(map[int64]struct{}, len(recipients))
+	uniqueRecipients := make([]int64, 0, len(recipients))
 	for _, userID := range recipients {
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		uniqueRecipients = append(uniqueRecipients, userID)
+	}
+
+	for _, userID := range uniqueRecipients {
 		var err error
 		if imageLink != "" {
 			err = s.sender.SendPhotoURL(userID, imageLink, text)
